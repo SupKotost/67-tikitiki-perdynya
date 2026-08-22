@@ -5,14 +5,23 @@
 #include <stdlib.h>
 #include <time.h>
 
-PSP_MODULE_INFO("Nikitu v0.0.5", 0, 1, 0);
+PSP_MODULE_INFO("Nikitu v0.0.6", 0, 1, 0);
 PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER);
+
+#define FIELD_WIDTH 40
+#define FIELD_HEIGHT 20
 
 #define LEFT 1
 #define RIGHT 38
 #define TOP 1
 #define BOTTOM 18
+
 #define MAX_MISSILES 5
+
+#define METEOR_WIDTH 10
+#define METEOR_HEIGHT 5
+
+#define FIELD_X 0
 
 typedef struct
 {
@@ -24,6 +33,18 @@ typedef struct
     int active;
 } Missile;
 
+typedef struct
+{
+    int x;
+    int y;
+    int direction;
+    int speed;
+    int frame;
+    int active;
+} Meteor;
+
+/* -------------------------------------------------- */
+
 int exit_callback(int a, int b, void *c)
 {
     sceKernelExitGame();
@@ -33,13 +54,16 @@ int exit_callback(int a, int b, void *c)
 int callback_thread(SceSize args, void *argp)
 {
     int cbid = sceKernelCreateCallback(
-        "Exit Callback", exit_callback, NULL
+        "Exit Callback",
+        exit_callback,
+        NULL
     );
 
     if (cbid >= 0)
         sceKernelRegisterExitCallback(cbid);
 
     sceKernelSleepThreadCB();
+
     return 0;
 }
 
@@ -58,6 +82,10 @@ void setup_callbacks(void)
         sceKernelStartThread(thid, 0, NULL);
 }
 
+/* -------------------------------------------------- */
+/* ОРЕШНИКИ                                           */
+/* -------------------------------------------------- */
+
 void spawn_missile(Missile *m, int difficulty)
 {
     int central;
@@ -67,9 +95,6 @@ void spawn_missile(Missile *m, int difficulty)
 
     m->direction = rand() % 4;
 
-    /*
-       Чаще выбираем траектории ближе к центру.
-    */
     central = rand() % 100;
 
     if (m->direction == 0 || m->direction == 1)
@@ -96,9 +121,6 @@ void spawn_missile(Missile *m, int difficulty)
     else
         m->y = BOTTOM;
 
-    /*
-       Чем выше сложность, тем быстрее.
-    */
     m->speed = 3 - difficulty;
 
     if (m->speed < 1)
@@ -145,6 +167,10 @@ int hit_player(Missile *m, int px, int py)
     return m->x == px && m->y == py;
 }
 
+/* -------------------------------------------------- */
+/* ЭКРАНЫ                                              */
+/* -------------------------------------------------- */
+
 void wait_start(SceCtrlData *pad)
 {
     while (1)
@@ -168,6 +194,7 @@ void game_over(SceCtrlData *pad, int score, int best)
     pspDebugScreenPrintf("========================================\n\n");
 
     pspDebugScreenPrintf("THE ORESHNIK GOT YOU!\n\n");
+
     pspDebugScreenPrintf("SCORE: %d\n", score);
     pspDebugScreenPrintf("BEST : %d\n\n", best);
 
@@ -186,43 +213,241 @@ void victory(SceCtrlData *pad)
     pspDebugScreenPrintf("========================================\n\n");
 
     pspDebugScreenPrintf("67 ORESHNIKS SURVIVED!\n\n");
-    pspDebugScreenPrintf("FINAL METEOR WAVE\n");
-    pspDebugScreenPrintf("2 METEORITES SURVIVED!\n\n");
+    pspDebugScreenPrintf("TWO METEORITES SURVIVED!\n\n");
 
-    pspDebugScreenPrintf("BUTCHER VICTORY!\n");
-    pspDebugScreenPrintf("SMACHNOOOOOOOO!\n\n");
+    pspDebugScreenPrintf("BUTCHER\n");
+    pspDebugScreenPrintf("(Тут должен быть звук дичайшего пердежа\n");
+    pspDebugScreenPrintf("но пока я его не добавил)\n\n");
 
     pspDebugScreenPrintf("PRESS START TO RETURN");
 
     wait_start(pad);
 }
 
-void final_wave(SceCtrlData *pad, int px, int py)
+/* -------------------------------------------------- */
+/* МЕТЕОРИТЫ                                           */
+/* -------------------------------------------------- */
+
+void spawn_meteor(Meteor *m, int difficulty)
 {
-    Missile m[2];
+    int side = rand() % 4;
 
-    int i;
-    int frame = 0;
+    m->active = 1;
+    m->frame = 0;
 
-    m[0].active = 0;
-    m[1].active = 0;
+    /*
+       0 = слева направо
+       1 = справа налево
+       2 = сверху вниз
+       3 = снизу вверх
+    */
 
-    spawn_missile(&m[0], 3);
-    spawn_missile(&m[1], 3);
+    m->direction = side;
+
+    /*
+       Скорость метеорита.
+       Чем выше сложность — тем быстрее.
+    */
+
+    m->speed = 2 - (difficulty / 2);
+
+    if (m->speed < 1)
+        m->speed = 1;
+
+    if (side == 0)
+    {
+        m->x = LEFT - METEOR_WIDTH;
+        m->y = TOP + rand() % (BOTTOM - TOP - METEOR_HEIGHT + 2);
+    }
+    else if (side == 1)
+    {
+        m->x = RIGHT + 1;
+        m->y = TOP + rand() % (BOTTOM - TOP - METEOR_HEIGHT + 2);
+    }
+    else if (side == 2)
+    {
+        m->x = LEFT + rand() % (RIGHT - LEFT - METEOR_WIDTH + 2);
+        m->y = TOP - METEOR_HEIGHT;
+    }
+    else
+    {
+        m->x = LEFT + rand() % (RIGHT - LEFT - METEOR_WIDTH + 2);
+        m->y = BOTTOM + 1;
+    }
+}
+
+void move_meteor(Meteor *m)
+{
+    if (!m->active)
+        return;
+
+    m->frame++;
+
+    if (m->frame < m->speed)
+        return;
+
+    m->frame = 0;
+
+    if (m->direction == 0)
+        m->x++;
+    else if (m->direction == 1)
+        m->x--;
+    else if (m->direction == 2)
+        m->y++;
+    else
+        m->y--;
+
+    /*
+       Проверяем, полностью ли метеорит
+       ушёл за пределы поля.
+    */
+
+    if (m->direction == 0)
+    {
+        if (m->x > RIGHT)
+            m->active = 0;
+    }
+    else if (m->direction == 1)
+    {
+        if (m->x + METEOR_WIDTH < LEFT)
+            m->active = 0;
+    }
+    else if (m->direction == 2)
+    {
+        if (m->y > BOTTOM)
+            m->active = 0;
+    }
+    else
+    {
+        if (m->y + METEOR_HEIGHT < TOP)
+            m->active = 0;
+    }
+}
+
+int meteor_hits_player(Meteor *m, int px, int py)
+{
+    int meteorLeft;
+    int meteorRight;
+    int meteorTop;
+    int meteorBottom;
+
+    if (!m->active)
+        return 0;
+
+    meteorLeft = m->x;
+    meteorRight = m->x + METEOR_WIDTH - 1;
+
+    meteorTop = m->y;
+    meteorBottom = m->y + METEOR_HEIGHT - 1;
+
+    if (px >= meteorLeft &&
+        px <= meteorRight &&
+        py >= meteorTop &&
+        py <= meteorBottom)
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
+/* -------------------------------------------------- */
+/* ФИНАЛЬНАЯ ВОЛНА                                    */
+/* -------------------------------------------------- */
+
+void draw_meteor(
+    Meteor *m,
+    int x,
+    int y
+)
+{
+    int mx;
+    int my;
+
+    if (!m->active)
+        return;
+
+    mx = x - m->x;
+    my = y - m->y;
+
+    if (
+        mx >= 0 &&
+        mx < METEOR_WIDTH &&
+        my >= 0 &&
+        my < METEOR_HEIGHT
+    )
+    {
+        /*
+           Разные символы создают простую
+           форму огромного метеорита.
+        */
+
+        if (mx == 0 ||
+            mx == METEOR_WIDTH - 1 ||
+            my == 0 ||
+            my == METEOR_HEIGHT - 1)
+        {
+            pspDebugScreenPrintf("#");
+        }
+        else if (
+            mx == 1 ||
+            mx == METEOR_WIDTH - 2 ||
+            my == 1 ||
+            my == METEOR_HEIGHT - 2)
+        {
+            pspDebugScreenPrintf("O");
+        }
+        else
+        {
+            pspDebugScreenPrintf("@");
+        }
+    }
+    else
+    {
+        pspDebugScreenPrintf(" ");
+    }
+}
+
+void final_wave(
+    SceCtrlData *pad,
+    int px,
+    int py,
+    int difficulty
+)
+{
+    Meteor meteor;
+
+    int meteorNumber = 1;
+
+    meteor.active = 0;
+
+    spawn_meteor(&meteor, difficulty);
 
     while (1)
     {
         pspDebugScreenClear();
 
         pspDebugScreenPrintf("\n");
-        pspDebugScreenPrintf("          FINAL METEOR WAVE\n");
-        pspDebugScreenPrintf("========================================\n\n");
+        pspDebugScreenPrintf(
+            "          FINAL METEOR %d/2\n",
+            meteorNumber
+        );
 
-        for (int y = 0; y < 20; y++)
+        pspDebugScreenPrintf(
+            "========================================\n\n"
+        );
+
+        for (int y = 0; y < FIELD_HEIGHT; y++)
         {
-            for (int x = 0; x < 40; x++)
+            pspDebugScreenPrintf(" ");
+
+            for (int x = 0; x < FIELD_WIDTH; x++)
             {
                 int printed = 0;
+
+                /*
+                   Игрок.
+                */
 
                 if (x == px && y == py)
                 {
@@ -230,31 +455,40 @@ void final_wave(SceCtrlData *pad, int px, int py)
                     printed = 1;
                 }
 
-                for (i = 0; i < 2; i++)
+                /*
+                   Метеорит.
+                */
+
+                if (!printed &&
+                    meteor.active &&
+                    x >= meteor.x &&
+                    x < meteor.x + METEOR_WIDTH &&
+                    y >= meteor.y &&
+                    y < meteor.y + METEOR_HEIGHT)
                 {
-                    if (
-                        !printed &&
-                        m[i].active &&
-                        m[i].x == x &&
-                        m[i].y == y
-                    )
-                    {
-                        pspDebugScreenPrintf("M");
-                        printed = 1;
-                    }
+                    draw_meteor(&meteor, x, y);
+                    printed = 1;
                 }
+
+                /*
+                   Рамка.
+                */
 
                 if (!printed)
                 {
                     if (
                         x == 0 ||
-                        x == 39 ||
+                        x == FIELD_WIDTH - 1 ||
                         y == 0 ||
-                        y == 19
+                        y == FIELD_HEIGHT - 1
                     )
+                    {
                         pspDebugScreenPrintf("#");
+                    }
                     else
+                    {
                         pspDebugScreenPrintf(" ");
+                    }
                 }
             }
 
@@ -293,34 +527,50 @@ void final_wave(SceCtrlData *pad, int px, int py)
         if (pad->Buttons & PSP_CTRL_START)
             return;
 
-        frame++;
+        move_meteor(&meteor);
 
-        if (frame >= 1)
-        {
-            frame = 0;
-
-            move_missile(&m[0]);
-            move_missile(&m[1]);
-        }
-
-        if (hit_player(&m[0], px, py) ||
-            hit_player(&m[1], px, py))
+        if (meteor_hits_player(&meteor, px, py))
         {
             game_over(pad, 67, 67);
             return;
         }
 
-        if (!m[0].active && !m[1].active)
+        /*
+           Первый метеорит ушёл.
+           Запускаем второй.
+        */
+
+        if (!meteor.active)
         {
-            victory(pad);
-            return;
+            if (meteorNumber == 1)
+            {
+                meteorNumber = 2;
+
+                spawn_meteor(
+                    &meteor,
+                    difficulty
+                );
+            }
+            else
+            {
+                victory(pad);
+                return;
+            }
         }
 
         sceDisplayWaitVblankStart();
     }
 }
 
-void game(SceCtrlData *pad, int difficulty, int *best)
+/* -------------------------------------------------- */
+/* ОСНОВНАЯ ИГРА                                      */
+/* -------------------------------------------------- */
+
+void game(
+    SceCtrlData *pad,
+    int difficulty,
+    int *best
+)
 {
     Missile missiles[MAX_MISSILES];
 
@@ -344,24 +594,47 @@ void game(SceCtrlData *pad, int difficulty, int *best)
     missileCount = 2 + rand() % 2;
 
     for (i = 0; i < missileCount; i++)
-        spawn_missile(&missiles[i], difficulty);
+        spawn_missile(
+            &missiles[i],
+            difficulty
+        );
 
     while (1)
     {
         pspDebugScreenClear();
 
         pspDebugScreenPrintf("\n");
-        pspDebugScreenPrintf("             NIKITU v0.0.5\n");
-        pspDebugScreenPrintf("========================================\n");
-        pspDebugScreenPrintf("SCORE: %d     BEST: %d\n\n", score, *best);
 
-        for (int y = 0; y < 20; y++)
+        pspDebugScreenPrintf(
+            "             NIKITU v0.0.6\n"
+        );
+
+        pspDebugScreenPrintf(
+            "========================================\n"
+        );
+
+        pspDebugScreenPrintf(
+            "SCORE: %d     BEST: %d\n\n",
+            score,
+            *best
+        );
+
+        for (int y = 0; y < FIELD_HEIGHT; y++)
         {
-            for (int x = 0; x < 40; x++)
+            /*
+               Центрирование поля.
+            */
+
+            pspDebugScreenPrintf(" ");
+
+            for (int x = 0; x < FIELD_WIDTH; x++)
             {
                 int printed = 0;
 
-                if (x == playerX && y == playerY)
+                if (
+                    x == playerX &&
+                    y == playerY
+                )
                 {
                     pspDebugScreenPrintf("@");
                     printed = 1;
@@ -396,20 +669,25 @@ void game(SceCtrlData *pad, int difficulty, int *best)
                 {
                     if (
                         x == 0 ||
-                        x == 39 ||
+                        x == FIELD_WIDTH - 1 ||
                         y == 0 ||
-                        y == 19
+                        y == FIELD_HEIGHT - 1
                     )
+                    {
                         pspDebugScreenPrintf("#");
+                    }
                     else
+                    {
                         pspDebugScreenPrintf(" ");
+                    }
                 }
             }
 
             pspDebugScreenPrintf("\n");
         }
 
-        pspDebugScreenPrintf("\nD-PAD - MOVE\n");
+        pspDebugScreenPrintf("\n");
+        pspDebugScreenPrintf("D-PAD - MOVE\n");
         pspDebugScreenPrintf("START - MENU\n");
 
         sceCtrlReadBufferPositive(pad, 1);
@@ -442,14 +720,14 @@ void game(SceCtrlData *pad, int difficulty, int *best)
             return;
 
         /*
-           Двигаем все Орешники.
+           Двигаем Орешники.
         */
 
         for (i = 0; i < missileCount; i++)
             move_missile(&missiles[i]);
 
         /*
-           Если Орешник пережит — новый появляется сразу.
+           Пережитые Орешники.
         */
 
         for (i = 0; i < missileCount; i++)
@@ -461,29 +739,45 @@ void game(SceCtrlData *pad, int difficulty, int *best)
                 if (score > *best)
                     *best = score;
 
-                /*
-                   После 67 обычных Орешников
-                   запускаем финальную волну.
-                */
                 if (score >= 67)
                 {
-                    final_wave(pad, playerX, playerY);
+                    final_wave(
+                        pad,
+                        playerX,
+                        playerY,
+                        difficulty
+                    );
+
                     return;
                 }
 
-                spawn_missile(&missiles[i], difficulty);
+                spawn_missile(
+                    &missiles[i],
+                    difficulty
+                );
             }
         }
 
         /*
-           Проверка столкновения с Орешником.
+           Столкновение с Орешником.
         */
 
         for (i = 0; i < missileCount; i++)
         {
-            if (hit_player(&missiles[i], playerX, playerY))
+            if (
+                hit_player(
+                    &missiles[i],
+                    playerX,
+                    playerY
+                )
+            )
             {
-                game_over(pad, score, *best);
+                game_over(
+                    pad,
+                    score,
+                    *best
+                );
+
                 return;
             }
         }
@@ -501,14 +795,14 @@ void game(SceCtrlData *pad, int difficulty, int *best)
                 obstacleActive = 1;
 
                 obstacleX =
-                    LEFT + rand() % (RIGHT - LEFT + 1);
+                    LEFT +
+                    rand() %
+                    (RIGHT - LEFT + 1);
 
                 obstacleY =
-                    TOP + rand() % (BOTTOM - TOP + 1);
-
-                /*
-                   Не спавним препятствие прямо на игроке.
-                */
+                    TOP +
+                    rand() %
+                    (BOTTOM - TOP + 1);
 
                 while (
                     obstacleX == playerX &&
@@ -516,14 +810,20 @@ void game(SceCtrlData *pad, int difficulty, int *best)
                 )
                 {
                     obstacleX =
-                        LEFT + rand() % (RIGHT - LEFT + 1);
+                        LEFT +
+                        rand() %
+                        (RIGHT - LEFT + 1);
 
                     obstacleY =
-                        TOP + rand() % (BOTTOM - TOP + 1);
+                        TOP +
+                        rand() %
+                        (BOTTOM - TOP + 1);
                 }
 
                 obstacleTimer =
-                    60 + rand() % (80 + difficulty * 40);
+                    60 +
+                    rand() %
+                    (80 + difficulty * 40);
             }
         }
         else
@@ -535,7 +835,9 @@ void game(SceCtrlData *pad, int difficulty, int *best)
                 obstacleActive = 0;
 
                 nextObstacle =
-                    70 + rand() % (100 - difficulty * 10);
+                    70 +
+                    rand() %
+                    (100 - difficulty * 10);
             }
         }
 
@@ -549,13 +851,17 @@ void game(SceCtrlData *pad, int difficulty, int *best)
             playerY == obstacleY
         )
         {
-            game_over(pad, score, *best);
+            game_over(
+                pad,
+                score,
+                *best
+            );
+
             return;
         }
 
         /*
-           После каждых 10 очков добавляем
-           ещё один Орешник, если есть место.
+           Добавляем Орешники каждые 10 очков.
         */
 
         if (
@@ -590,6 +896,10 @@ void game(SceCtrlData *pad, int difficulty, int *best)
     }
 }
 
+/* -------------------------------------------------- */
+/* СЛОЖНОСТЬ                                         */
+/* -------------------------------------------------- */
+
 void difficulty_menu(
     SceCtrlData *pad,
     int *difficulty
@@ -602,9 +912,17 @@ void difficulty_menu(
         pspDebugScreenClear();
 
         pspDebugScreenPrintf("\n\n");
-        pspDebugScreenPrintf("================================\n");
-        pspDebugScreenPrintf("           DIFFICULTY\n");
-        pspDebugScreenPrintf("================================\n\n");
+        pspDebugScreenPrintf(
+            "================================\n"
+        );
+
+        pspDebugScreenPrintf(
+            "           DIFFICULTY\n"
+        );
+
+        pspDebugScreenPrintf(
+            "================================\n\n"
+        );
 
         if (selected == 0)
             pspDebugScreenPrintf("  > EASY\n");
@@ -626,7 +944,9 @@ void difficulty_menu(
         else
             pspDebugScreenPrintf("    INSANE\n");
 
-        pspDebugScreenPrintf("\nX - SELECT\nSTART - BACK\n");
+        pspDebugScreenPrintf("\n");
+        pspDebugScreenPrintf("X - SELECT\n");
+        pspDebugScreenPrintf("START - BACK\n");
 
         sceCtrlReadBufferPositive(pad, 1);
 
@@ -663,6 +983,10 @@ void difficulty_menu(
     }
 }
 
+/* -------------------------------------------------- */
+/* MAIN                                               */
+/* -------------------------------------------------- */
+
 int main(void)
 {
     SceCtrlData pad;
@@ -676,44 +1000,82 @@ int main(void)
     pspDebugScreenInit();
 
     sceCtrlSetSamplingCycle(0);
-    sceCtrlSetSamplingMode(PSP_CTRL_MODE_DIGITAL);
+    sceCtrlSetSamplingMode(
+        PSP_CTRL_MODE_DIGITAL
+    );
 
-    srand((unsigned int)time(NULL));
+    srand(
+        (unsigned int)time(NULL)
+    );
 
     while (1)
     {
         pspDebugScreenClear();
 
         pspDebugScreenPrintf("\n\n");
-        pspDebugScreenPrintf("================================\n");
-        pspDebugScreenPrintf("          NIKITU v0.0.5\n");
-        pspDebugScreenPrintf("================================\n\n");
+
+        pspDebugScreenPrintf(
+            "================================\n"
+        );
+
+        pspDebugScreenPrintf(
+            "          NIKITU v0.0.6\n"
+        );
+
+        pspDebugScreenPrintf(
+            "================================\n\n"
+        );
 
         if (selected == 0)
-            pspDebugScreenPrintf("  > START GAME\n");
+            pspDebugScreenPrintf(
+                "  > START GAME\n"
+            );
         else
-            pspDebugScreenPrintf("    START GAME\n");
+            pspDebugScreenPrintf(
+                "    START GAME\n"
+            );
 
         if (selected == 1)
-            pspDebugScreenPrintf("  > DIFFICULTY\n");
+            pspDebugScreenPrintf(
+                "  > DIFFICULTY\n"
+            );
         else
-            pspDebugScreenPrintf("    DIFFICULTY\n");
+            pspDebugScreenPrintf(
+                "    DIFFICULTY\n"
+            );
 
         if (selected == 2)
-            pspDebugScreenPrintf("  > OPTIONS\n");
+            pspDebugScreenPrintf(
+                "  > OPTIONS\n"
+            );
         else
-            pspDebugScreenPrintf("    OPTIONS\n");
+            pspDebugScreenPrintf(
+                "    OPTIONS\n"
+            );
 
         if (selected == 3)
-            pspDebugScreenPrintf("  > EXIT\n");
+            pspDebugScreenPrintf(
+                "  > EXIT\n"
+            );
         else
-            pspDebugScreenPrintf("    EXIT\n");
+            pspDebugScreenPrintf(
+                "    EXIT\n"
+            );
 
         pspDebugScreenPrintf("\n\n");
-        pspDebugScreenPrintf("UP/DOWN - SELECT\n");
-        pspDebugScreenPrintf("X - CONFIRM\n");
 
-        sceCtrlReadBufferPositive(&pad, 1);
+        pspDebugScreenPrintf(
+            "UP/DOWN - SELECT\n"
+        );
+
+        pspDebugScreenPrintf(
+            "X - CONFIRM\n"
+        );
+
+        sceCtrlReadBufferPositive(
+            &pad,
+            1
+        );
 
         if (pad.Buttons & PSP_CTRL_UP)
         {
@@ -722,7 +1084,9 @@ int main(void)
             if (selected < 0)
                 selected = 3;
 
-            sceKernelDelayThread(150000);
+            sceKernelDelayThread(
+                150000
+            );
         }
 
         if (pad.Buttons & PSP_CTRL_DOWN)
@@ -732,27 +1096,47 @@ int main(void)
             if (selected > 3)
                 selected = 0;
 
-            sceKernelDelayThread(150000);
+            sceKernelDelayThread(
+                150000
+            );
         }
 
         if (pad.Buttons & PSP_CTRL_CROSS)
         {
             if (selected == 0)
             {
-                game(&pad, difficulty, &best);
+                game(
+                    &pad,
+                    difficulty,
+                    &best
+                );
             }
             else if (selected == 1)
             {
-                difficulty_menu(&pad, &difficulty);
+                difficulty_menu(
+                    &pad,
+                    &difficulty
+                );
             }
             else if (selected == 2)
             {
                 pspDebugScreenClear();
 
-                pspDebugScreenPrintf("\n\n");
-                pspDebugScreenPrintf("OPTIONS\n\n");
-                pspDebugScreenPrintf("Nothing here yet.\n\n");
-                pspDebugScreenPrintf("PRESS START");
+                pspDebugScreenPrintf(
+                    "\n\n"
+                );
+
+                pspDebugScreenPrintf(
+                    "OPTIONS\n\n"
+                );
+
+                pspDebugScreenPrintf(
+                    "Nothing here yet.\n\n"
+                );
+
+                pspDebugScreenPrintf(
+                    "PRESS START"
+                );
 
                 wait_start(&pad);
             }
