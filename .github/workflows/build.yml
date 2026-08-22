@@ -14,32 +14,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install image tools
-        run: |
-          pacman -Sy --noconfirm imagemagick
-
-      - name: Convert player image
-        run: |
-          mkdir -p assets/build
-          magick assets/img_0566.jpeg \
-            -resize 64x64 \
-            -background white \
-            -gravity center \
-            -extent 64x64 \
-            -depth 8 \
-            assets/build/player.ppm
-
-      - name: Convert PPM to RGB565
-        run: |
-          python3 tools/ppm_to_rgb565.py \
-            assets/build/player.ppm \
-            assets/build/player.rgb565
-
       - name: Build
         run: make
 
       - name: Upload EBOOT
         uses: actions/upload-artifact@v4
         with:
-          name: Nikitu-PSP-v0.0.6
+          name: Nikitu-PSP
           path: EBOOT.PBP
