@@ -124,7 +124,7 @@ void game_over(SceCtrlData *pad)
     {
         sceCtrlReadBufferPositive(pad, 1);
 
-        if (pad.Buttons & PSP_CTRL_START)
+        if (pad->Buttons & PSP_CTRL_START)
             return;
 
         sceDisplayWaitVblankStart();
