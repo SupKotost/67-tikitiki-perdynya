@@ -15,16 +15,13 @@ int exit_callback(int arg1, int arg2, void *common)
 int callback_thread(SceSize args, void *argp)
 {
     int cbid = sceKernelCreateCallback(
-        "Exit Callback",
-        exit_callback,
-        NULL
+        "Exit Callback", exit_callback, NULL
     );
 
     if (cbid >= 0)
         sceKernelRegisterExitCallback(cbid);
 
     sceKernelSleepThreadCB();
-
     return 0;
 }
 
@@ -43,6 +40,81 @@ int setup_callbacks(void)
         sceKernelStartThread(thid, 0, NULL);
 
     return thid;
+}
+
+void game(void)
+{
+    SceCtrlData pad;
+
+    int playerX = 15;
+    int playerY = 10;
+
+    while (1)
+    {
+        pspDebugScreenClear();
+
+        pspDebugScreenPrintf("\n");
+        pspDebugScreenPrintf("             NIKITU\n");
+        pspDebugScreenPrintf("================================\n\n");
+
+        /* Игровое поле */
+        for (int y = 0; y < 20; y++)
+        {
+            for (int x = 0; x < 40; x++)
+            {
+                if (x == playerX && y == playerY)
+                    pspDebugScreenPrintf("@");
+                else if (x == 0 || x == 39 || y == 0 || y == 19)
+                    pspDebugScreenPrintf("#");
+                else
+                    pspDebugScreenPrintf(" ");
+            }
+
+            pspDebugScreenPrintf("\n");
+        }
+
+        pspDebugScreenPrintf("\nD-PAD - MOVE");
+        pspDebugScreenPrintf("\nSTART - MENU");
+
+        sceCtrlReadBufferPositive(&pad, 1);
+
+        if (pad.Buttons & PSP_CTRL_LEFT)
+        {
+            if (playerX > 1)
+                playerX--;
+
+            sceKernelDelayThread(80000);
+        }
+
+        if (pad.Buttons & PSP_CTRL_RIGHT)
+        {
+            if (playerX < 38)
+                playerX++;
+
+            sceKernelDelayThread(80000);
+        }
+
+        if (pad.Buttons & PSP_CTRL_UP)
+        {
+            if (playerY > 1)
+                playerY--;
+
+            sceKernelDelayThread(80000);
+        }
+
+        if (pad.Buttons & PSP_CTRL_DOWN)
+        {
+            if (playerY < 18)
+                playerY++;
+
+            sceKernelDelayThread(80000);
+        }
+
+        if (pad.Buttons & PSP_CTRL_START)
+            return;
+
+        sceDisplayWaitVblankStart();
+    }
 }
 
 int main(void)
@@ -111,19 +183,14 @@ int main(void)
         {
             if (selected == 0)
             {
-                pspDebugScreenClear();
-                pspDebugScreenPrintf("\n\n");
-                pspDebugScreenPrintf("================================\n");
-                pspDebugScreenPrintf("          GAME START!\n");
-                pspDebugScreenPrintf("================================\n\n");
-                pspDebugScreenPrintf("THE METEOR IS COMING...\n");
-
-                sceKernelDelayThread(3000000);
+                game();
             }
             else if (selected == 1)
             {
                 pspDebugScreenClear();
-                pspDebugScreenPrintf("\n\nOPTIONS\n\n");
+
+                pspDebugScreenPrintf("\n\n");
+                pspDebugScreenPrintf("OPTIONS\n\n");
                 pspDebugScreenPrintf("Nothing here yet.\n");
 
                 sceKernelDelayThread(2000000);
