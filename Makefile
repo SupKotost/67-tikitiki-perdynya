@@ -7,4 +7,6 @@ LIBS = -lpspdebug -lpspdisplay -lpspge -lpspctrl -lpspsdk
 EXTRA_TARGETS = EBOOT.PBP
 PSP_EBOOT_TITLE = Nikitu
 
-include $(shell psp-config --pspsdk-path)/lib/build.mak
+PSPSDK := $(shell psp-config --pspsdk-path)
+
+include $(PSPSDK)/lib/build.mak
