@@ -2,34 +2,20 @@ name: Build PSP Game
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    container: pspdev/pspdev:latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install PSP SDK
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential git
-          git clone --depth 1 https://github.com/pspdev/psptoolchain.git
-          cd psptoolchain
-          export PSPDEV="$HOME/pspdev"
-          export PATH="$PSPDEV/bin:$PATH"
-          ./prepare.sh
-          sudo ./build-all.sh
-
-      - name: Build game
-        run: |
-          export PSPDEV="$HOME/pspdev"
-          export PATH="$PSPDEV/bin:$PATH"
-          make
+      - name: Build
+        run: make
 
       - name: Upload EBOOT
         uses: actions/upload-artifact@v4
