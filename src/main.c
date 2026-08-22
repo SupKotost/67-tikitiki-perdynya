@@ -3,7 +3,7 @@
 #include <pspdisplay.h>
 #include <pspctrl.h>
 
-PSP_MODULE_INFO("67 TIKI TIKI", 0, 1, 0);
+PSP_MODULE_INFO("Nikitu", 0, 1, 0);
 PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER);
 
 int exit_callback(int arg1, int arg2, void *common)
@@ -48,32 +48,90 @@ int setup_callbacks(void)
 int main(void)
 {
     SceCtrlData pad;
+    int selected = 0;
 
     setup_callbacks();
 
     pspDebugScreenInit();
-
-    pspDebugScreenPrintf("================================\n");
-    pspDebugScreenPrintf("        67 TIKI TIKI\n");
-    pspDebugScreenPrintf("================================\n\n");
-
-    pspDebugScreenPrintf("HOMELANDER EDITION\n\n");
-    pspDebugScreenPrintf("PRESS START TO BEGIN\n");
 
     sceCtrlSetSamplingCycle(0);
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_DIGITAL);
 
     while (1)
     {
+        pspDebugScreenClear();
+
+        pspDebugScreenPrintf("\n\n");
+        pspDebugScreenPrintf("================================\n");
+        pspDebugScreenPrintf("            NIKITU\n");
+        pspDebugScreenPrintf("================================\n\n");
+
+        if (selected == 0)
+            pspDebugScreenPrintf("  > START GAME\n");
+        else
+            pspDebugScreenPrintf("    START GAME\n");
+
+        if (selected == 1)
+            pspDebugScreenPrintf("  > OPTIONS\n");
+        else
+            pspDebugScreenPrintf("    OPTIONS\n");
+
+        if (selected == 2)
+            pspDebugScreenPrintf("  > EXIT\n");
+        else
+            pspDebugScreenPrintf("    EXIT\n");
+
+        pspDebugScreenPrintf("\n\n");
+        pspDebugScreenPrintf("UP/DOWN - SELECT\n");
+        pspDebugScreenPrintf("X - CONFIRM\n");
+
         sceCtrlReadBufferPositive(&pad, 1);
 
-        if (pad.Buttons & PSP_CTRL_START)
+        if (pad.Buttons & PSP_CTRL_UP)
         {
-            pspDebugScreenClear();
+            selected--;
 
-            pspDebugScreenPrintf("67 TIKI TIKI\n\n");
-            pspDebugScreenPrintf("GAME START!\n\n");
-            pspDebugScreenPrintf("THE METEOR IS COMING...\n");
+            if (selected < 0)
+                selected = 2;
+
+            sceKernelDelayThread(150000);
+        }
+
+        if (pad.Buttons & PSP_CTRL_DOWN)
+        {
+            selected++;
+
+            if (selected > 2)
+                selected = 0;
+
+            sceKernelDelayThread(150000);
+        }
+
+        if (pad.Buttons & PSP_CTRL_CROSS)
+        {
+            if (selected == 0)
+            {
+                pspDebugScreenClear();
+                pspDebugScreenPrintf("\n\n");
+                pspDebugScreenPrintf("================================\n");
+                pspDebugScreenPrintf("          GAME START!\n");
+                pspDebugScreenPrintf("================================\n\n");
+                pspDebugScreenPrintf("THE METEOR IS COMING...\n");
+
+                sceKernelDelayThread(3000000);
+            }
+            else if (selected == 1)
+            {
+                pspDebugScreenClear();
+                pspDebugScreenPrintf("\n\nOPTIONS\n\n");
+                pspDebugScreenPrintf("Nothing here yet.\n");
+
+                sceKernelDelayThread(2000000);
+            }
+            else if (selected == 2)
+            {
+                sceKernelExitGame();
+            }
         }
 
         sceDisplayWaitVblankStart();
